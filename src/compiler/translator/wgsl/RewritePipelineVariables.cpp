@@ -198,6 +198,70 @@ ImmutableString CreateNameToReplaceBuiltin(ImmutableString glslBuiltinName)
     return newName;
 }
 
+// Returns the WGSL interpolation attribute (including a trailing space) matching the
+// interpolation qualifier of a varying, or an empty string for the default perspective-correct
+// center interpolation (and for attributes and fragment outputs, which are not interpolated).
+const char *GetWgslInterpolationAttribute(TQualifier qualifier)
+{
+    switch (qualifier)
+    {
+        case EvqFlatOut:
+        case EvqFlatIn:
+            return "@interpolate(flat) ";
+        case EvqCentroidOut:
+        case EvqCentroidIn:
+            return "@interpolate(perspective, centroid) ";
+        case EvqSampleOut:
+        case EvqSampleIn:
+            return "@interpolate(perspective, sample) ";
+        case EvqNoPerspectiveOut:
+        case EvqNoPerspectiveIn:
+            return "@interpolate(linear) ";
+        case EvqNoPerspectiveCentroidOut:
+        case EvqNoPerspectiveCentroidIn:
+            return "@interpolate(linear, centroid) ";
+        case EvqNoPerspectiveSampleOut:
+        case EvqNoPerspectiveSampleIn:
+            return "@interpolate(linear, sample) ";
+        default:
+            return "";
+    }
+}
+
+// WebGPU requires fragment shader outputs to have at least as many components as the format of
+// the color attachment they are written to, whereas GL allows fewer (the other components are
+// undefined). So fragment shader outputs with fewer than 4 components are widened to 4.
+bool IsNarrowFragmentOutput(const TType &type)
+{
+    return type.getQualifier() == EvqFragmentOut && type.getNominalSize() < 4;
+}
+
+// Returns the 4-component WGSL type for a narrow fragment output of type `type`.
+ImmutableString WidenedFragmentOutputType(const TType &type)
+{
+    ASSERT(IsNarrowFragmentOutput(type));
+    TType widenedType(type.getBasicType(), type.getPrecision(), EvqTemporary, 4);
+    TStringStream typeStream;
+    WriteWgslType(typeStream, widenedType, {});
+    return BuildConcatenatedImmutableString(typeStream.str().c_str());
+}
+
+// Returns `value` widened to 4 components, e.g. `vec4<f32>(value, 0, 1)` for a vec2.
+ImmutableString WidenFragmentOutput(const TType &type, const ImmutableString &value)
+{
+    ASSERT(IsNarrowFragmentOutput(type));
+    constexpr const char *kPadding[] = {", 0, 0, 1", ", 0, 1", ", 1"};
+    return BuildConcatenatedImmutableString(WidenedFragmentOutputType(type), "(", value,
+                                            kPadding[type.getNominalSize() - 1], ")");
+}
+
+// Returns the name of the WGSL in/out struct member that holds element `index` of an array
+// in/out variable. Must match the names generated in wgpu_wgsl_util.cpp.
+ImmutableString MakeArrayElementVarName(const char *arrayVarName, unsigned int index)
+{
+    return BuildConcatenatedImmutableString(arrayVarName, "_elem", index);
+}
+
 }  // namespace
 
 // Friended by RewritePipelineVarOutput
@@ -341,10 +405,41 @@ class RewritePipelineVarOutputBuilder
 {
     for (const ShaderVariable &shaderVar : shaderVars)
     {
-        if (shaderVar.name == "gl_FragData" || shaderVar.name == "gl_SecondaryFragColorEXT" ||
+        if (shaderVar.name == "gl_FragData")
+        {
+            ASSERT(ioType == IOType::Output);
+            // gl_FragData is an array of vec4 written to draw buffers 0..N-1. Declare it as an
+            // array in the global output struct and split it into one member per draw buffer in
+            // the annotated output struct, e.g.
+            //   gl_FragData_ : array<vec4<f32>, 2>,
+            //   @location(0) gl_FragData__elem0 : vec4<f32>,
+            //   @location(1) gl_FragData__elem1 : vec4<f32>,
+            const TVariable *fragData = compiler.getSymbolTable().gl_FragData();
+            ASSERT(fragData && fragData->getType().isArray());
+            varsToReplace->insert(fragData->uniqueId().get());
+
+            ImmutableString builtinReplacement =
+                CreateNameToReplaceBuiltin(ImmutableString("gl_FragData"));
+            const unsigned int arraySize = fragData->getType().getOutermostArraySize();
+
+            ioblock->angleGlobalMembers.push_back(BuildConcatenatedImmutableString(
+                builtinReplacement, " : array<vec4<f32>, ", arraySize, ">,"));
+            for (unsigned int i = 0; i < arraySize; ++i)
+            {
+                ImmutableString elemName = MakeArrayElementVarName(builtinReplacement.data(), i);
+                ioblock->angleAnnotatedMembers.push_back(BuildConcatenatedImmutableString(
+                    "@location(", i, ") ", elemName, " : vec4<f32>,"));
+                ioblock->angleConversionFuncs.push_back(
+                    BuildConcatenatedImmutableString(toStruct, ".", elemName, " = ", fromStruct,
+                                                     ".", builtinReplacement, "[", i, "];"));
+            }
+            continue;
+        }
+
+        if (shaderVar.name == "gl_SecondaryFragColorEXT" ||
             shaderVar.name == "gl_SecondaryFragDataEXT")
         {
-            // TODO(anglebug.com/42267100): declare gl_FragData as multiple variables.
+            // TODO(anglebug.com/42267100): support dual-source blending.
             UNIMPLEMENTED();
             return false;
         }
@@ -394,12 +489,61 @@ class RewritePipelineVarOutputBuilder
                 BuildConcatenatedImmutableString(userVarNameStr.c_str(), " : ", type.c_str(), ",");
             ioblock->angleGlobalMembers.push_back(globalStructVar);
 
+            // Varyings need their interpolation qualifier. It is placed before the location so
+            // that the location marker is directly followed by the variable name.
+            const char *interpolationAttribute =
+                GetWgslInterpolationAttribute(astVar->getType().getQualifier());
+
             if (astVar->getType().isArray())
             {
-                // TODO(anglebug.com/42267100): need to support arrays (of scalars, vectors, and
-                // matrices, maybe structs).
-                ANGLE_LOG(ERR) << "Shader in/out variables of array type currently not supported.";
-                return false;
+                // WGSL does not allow arrays in the pipeline interface, so split the array into
+                // one member per element, each with its own location. E.g.
+                // @location(@@@@@@) _uuserVar_elem0 : vec4<f32>,
+                // @location(@@@@@@) _uuserVar_elem1 : vec4<f32>,
+                TType elementType = astVar->getType();
+                elementType.toArrayElementType();
+                if (elementType.isArray() || elementType.isMatrix() || elementType.getStruct())
+                {
+                    // TODO(anglebug.com/42267100): support arrays of matrices and structs.
+                    ANGLE_LOG(ERR) << "Shader in/out arrays of arrays, matrices or structs "
+                                      "currently not supported.";
+                    return false;
+                }
+
+                TStringStream elementTypeStream;
+                WriteWgslType(elementTypeStream, elementType, {});
+                TString elementTypeStr = elementTypeStream.str();
+
+                const unsigned int arraySize = astVar->getType().getOutermostArraySize();
+                for (unsigned int i = 0; i < arraySize; ++i)
+                {
+                    ImmutableString elemName = MakeArrayElementVarName(userVarNameStr.c_str(), i);
+                    const bool widen         = IsNarrowFragmentOutput(elementType);
+                    ioblock->angleAnnotatedMembers.push_back(BuildConcatenatedImmutableString(
+                        interpolationAttribute, "@location(@@@@@@) ", elemName, " : ",
+                        widen ? WidenedFragmentOutputType(elementType)
+                              : BuildConcatenatedImmutableString(elementTypeStr.c_str()),
+                        ","));
+
+                    // E.g. `ANGLE_input_global._uuserVar[0] = ANGLE_input_annotated._uuserVar_elem0;`
+                    // for inputs, and the reverse for outputs.
+                    ImmutableString conversion(nullptr);
+                    if (ioType == IOType::Input)
+                    {
+                        conversion = BuildConcatenatedImmutableString(
+                            toStruct, ".", userVarNameStr.c_str(), "[", i, "] = ", fromStruct, ".",
+                            elemName, ";");
+                    }
+                    else
+                    {
+                        ImmutableString value = BuildConcatenatedImmutableString(
+                            fromStruct, ".", userVarNameStr.c_str(), "[", i, "]");
+                        conversion = BuildConcatenatedImmutableString(
+                            toStruct, ".", elemName, " = ",
+                            widen ? WidenFragmentOutput(elementType, value) : value, ";");
+                    }
+                    ioblock->angleConversionFuncs.push_back(conversion);
+                }
             }
             else if (astVar->getType().isMatrix())
             {
@@ -436,7 +580,8 @@ class RewritePipelineVarOutputBuilder
 
                     // Add a column vec to the WGSL in/out block.
                     ImmutableString annotatedStructVar = BuildConcatenatedImmutableString(
-                        locationAnnotationStr, colVarName, " : ", rowVecType.c_str(), ",");
+                        interpolationAttribute, locationAnnotationStr, colVarName, " : ",
+                        rowVecType.c_str(), ",");
                     ioblock->angleAnnotatedMembers.push_back(annotatedStructVar);
 
                     // When outputting matrices, they need to be split into column vectors which are
@@ -472,10 +617,28 @@ class RewritePipelineVarOutputBuilder
                 ASSERT((astVar->getType().isVector() || astVar->getType().isScalar()) &&
                        !astVar->getType().isArray());
 
+                const TType &varType = astVar->getType();
+                if (IsNarrowFragmentOutput(varType))
+                {
+                    // E.g. `@location(@@@@@@) _uuserVar : vec4<f32>,` and
+                    // `ANGLE_output_annotated._uuserVar =
+                    //      vec4<f32>(ANGLE_output_global._uuserVar, 0, 1);` for a vec2.
+                    ioblock->angleAnnotatedMembers.push_back(BuildConcatenatedImmutableString(
+                        "@location(@@@@@@) ", userVarNameStr.c_str(), " : ",
+                        WidenedFragmentOutputType(varType), ","));
+                    ioblock->angleConversionFuncs.push_back(BuildConcatenatedImmutableString(
+                        toStruct, ".", userVarNameStr.c_str(), " = ",
+                        WidenFragmentOutput(varType,
+                                            BuildConcatenatedImmutableString(
+                                                fromStruct, ".", userVarNameStr.c_str())),
+                        ";"));
+                    continue;
+                }
+
                 // E.g. `@location(@@@@@@) _uuserVar : i32,`.
                 const char *locationAnnotationStr = "@location(@@@@@@) ";
-                ImmutableString annotatedStructVar =
-                    BuildConcatenatedImmutableString(locationAnnotationStr, globalStructVar);
+                ImmutableString annotatedStructVar = BuildConcatenatedImmutableString(
+                    interpolationAttribute, locationAnnotationStr, globalStructVar);
                 ioblock->angleAnnotatedMembers.push_back(annotatedStructVar);
 
                 // E.g. `ANGLE_input_global._uuserVar = ANGLE_input_annotated._uuserVar;`

@@ -131,6 +131,13 @@ std::string WgslReplaceMarkers(const std::string &shaderSource,
     return newSource;
 }
 
+// Returns the number of WGSL locations used by an in/out variable, see AddShaderVarLocation().
+int GetShaderVarLocationCount(GLenum varType, unsigned int arraySize)
+{
+    int count = gl::IsMatrixType(varType) ? gl::VariableColumnCount(varType) : 1;
+    return arraySize ? count * static_cast<int>(arraySize) : count;
+}
+
 void AddShaderVarLocation(std::map<std::string, int> &varNameToLocation,
                           std::string varName,
                           int &startLoc,
@@ -148,8 +155,21 @@ void AddShaderVarLocation(std::map<std::string, int> &varNameToLocation,
 
     if (arraySize)
     {
-        // TODO(anglebug.com/42267100): need to support arrays (of scalars, vectors, and matrices).
-        UNIMPLEMENTED();
+        if (gl::IsMatrixType(varType))
+        {
+            // TODO(anglebug.com/42267100): need to support arrays of matrices.
+            UNIMPLEMENTED();
+            return;
+        }
+
+        // The translator splits arrays into one variable per element, see
+        // RewritePipelineVariables.cpp.
+        for (unsigned int i = 0; i < arraySize; i++)
+        {
+            std::string elementVarName = varName + "_elem" + std::to_string(i);
+            ASSERT(varNameToLocation.find(elementVarName) == varNameToLocation.end());
+            varNameToLocation[elementVarName] = startLoc++;
+        }
         return;
     }
 
@@ -222,7 +242,9 @@ std::string WgslAssignLocationsAndSamplerBindings(const gl::ProgramExecutable &e
                 // Increment `currLockMarker` to keep locations in sync with the WGSL source
                 // generated for the other shader stage, which will also have incremented
                 // `currLocMarker` when seeing this variable.
-                currLocMarker++;
+                currLocMarker += GetShaderVarLocationCount(
+                    otherShaderVar->type,
+                    otherShaderVar->isArray() ? otherShaderVar->getBasicTypeElementCount() : 0u);
             }
         }
     }

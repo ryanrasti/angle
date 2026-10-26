@@ -9100,6 +9100,79 @@ TEST_P(GLSLTest_ES3, InactiveVaryingArrayUnusedInFragmentShader)
     EXPECT_PIXEL_COLOR_EQ(0, 0, GLColor::black);
 }
 
+// Test that a varying array is passed from the vertex shader to the fragment shader, with each
+// element going through its own varying.  Similar to the texture coordinates of Cogl's pipelines.
+TEST_P(GLSLTest, VaryingArray)
+{
+    constexpr char kVS[] = R"(attribute vec4 inputAttribute;
+varying vec4 v_texCoords[3];
+void main()
+{
+    gl_Position = inputAttribute;
+    v_texCoords[0] = vec4(1.0, 0.0, 0.0, 0.0);
+    v_texCoords[1] = vec4(0.0, 1.0, 0.0, 0.0);
+    v_texCoords[2] = vec4(0.0, 0.0, 0.0, 1.0);
+})";
+
+    constexpr char kFS[] = R"(precision mediump float;
+varying vec4 v_texCoords[3];
+#define texCoord1 v_texCoords[1]
+void main()
+{
+    gl_FragColor = v_texCoords[0] + texCoord1 + v_texCoords[2];
+})";
+
+    ANGLE_GL_PROGRAM(program, kVS, kFS);
+    drawQuad(program, "inputAttribute", 0.5f);
+    EXPECT_PIXEL_RECT_EQ(0, 0, getWindowWidth(), getWindowHeight(), GLColor::yellow);
+}
+
+// Test flat varying arrays and flat integer varyings, including passing a varying array to a
+// function.  Similar to how GTK's renderer passes rounded rectangles to its fragment shaders.
+TEST_P(GLSLTest_ES3, FlatVaryingArrayAndIntegerVaryings)
+{
+    constexpr char kVS[] = R"(#version 300 es
+#define RoundedRect vec4[3]
+in vec4 inputAttribute;
+flat out RoundedRect v_rect;
+flat out uint v_mask;
+flat out uvec2 v_channels;
+out vec2 v_position;
+void main()
+{
+    gl_Position = inputAttribute;
+    v_rect = RoundedRect(vec4(0.0, 0.25, 0.5, 0.75), vec4(1.0, 2.0, 3.0, 4.0),
+                         vec4(-1.0, -2.0, -3.0, -4.0));
+    v_mask = 5u;
+    v_channels = uvec2(7u, 0xFFFFFFFFu);
+    v_position = inputAttribute.xy;
+})";
+
+    constexpr char kFS[] = R"(#version 300 es
+precision highp float;
+#define RoundedRect vec4[3]
+flat in RoundedRect v_rect;
+flat in uint v_mask;
+flat in uvec2 v_channels;
+in vec2 v_position;
+out vec4 color;
+bool checkRect(RoundedRect r)
+{
+    return r[0] == vec4(0.0, 0.25, 0.5, 0.75) && r[1] == vec4(1.0, 2.0, 3.0, 4.0) &&
+           r[2] == vec4(-1.0, -2.0, -3.0, -4.0);
+}
+void main()
+{
+    bool ok = checkRect(v_rect) && (v_mask & 4u) == 4u && v_mask == 5u &&
+              v_channels == uvec2(7u, 0xFFFFFFFFu) && abs(v_position.x) <= 1.0;
+    color = ok ? vec4(0.0, 1.0, 0.0, 1.0) : vec4(1.0, 0.0, 0.0, 1.0);
+})";
+
+    ANGLE_GL_PROGRAM(program, kVS, kFS);
+    drawQuad(program, "inputAttribute", 0.5f);
+    EXPECT_PIXEL_RECT_EQ(0, 0, getWindowWidth(), getWindowHeight(), GLColor::green);
+}
+
 // Test that an inactive varying struct that doesn't get used in the fragment shader works.
 TEST_P(GLSLTest_ES3, InactiveVaryingStructUnusedInFragmentShader)
 {
