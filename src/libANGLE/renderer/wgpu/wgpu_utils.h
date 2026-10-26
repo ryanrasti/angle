@@ -472,6 +472,7 @@ bool IsStripPrimitiveTopology(WGPUPrimitiveTopology topology);
 
 // Required alignments for buffer sizes and mapping
 constexpr size_t kBufferSizeAlignment         = 4;
+constexpr size_t kUniformBufferSizeAlignment  = 16;
 constexpr size_t kBufferCopyToBufferAlignment = 4;
 constexpr size_t kBufferMapSizeAlignment   = kBufferSizeAlignment;
 constexpr size_t kBufferMapOffsetAlignment = 8;

@@ -22,7 +22,8 @@ enum WgslBindGroupNumbers : uint32_t
     kDefaultUniformBlockBindGroup = 0,
     kTextureAndSamplerBindGroup   = 1,
     kDriverUniformBindGroup       = 2,
-    kMaxBindGroup                 = 2
+    kUniformBlockBindGroup        = 3,
+    kMaxBindGroup                 = 3
 };
 
 const uint32_t kDefaultVertexUniformBlockBinding   = 0;
@@ -36,6 +37,12 @@ const char kTextureSamplerBindingMarker[] = "@group(1) @binding(@@@@@@) var ";
 // The translator emits split samplers/textures for GLSL's combined textures/samplers (combined
 // textures/samplers are not supported by WGSL). The new variables are prefixed with these
 // constants, respectively.
+// The binding index of each user-defined uniform block is the index of the block in the program,
+// which is only known at link time. The translator emits the block name between these markers,
+// e.g. `@binding(@@@@@@Block@@)`, and the marker is replaced with the index when linking.
+const char kUniformBlockBindingMarkerStart[] = "@@@@@@";
+const char kUniformBlockBindingMarkerEnd[]   = "@@";
+
 const char kAngleSamplerPrefix[] = "ANGLE_sampler_";
 const char kAngleTexturePrefix[] = "ANGLE_texture_";
 

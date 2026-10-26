@@ -35,6 +35,9 @@ class ProgramExecutableWgpu : public ProgramExecutableImpl
                                                 webgpu::BindGroupHandle *outBindGroup);
     angle::Result getSamplerAndTextureBindGroup(ContextWgpu *contextWgpu,
                                                 webgpu::BindGroupHandle *outBindGroup);
+    // Returns the bind group with the buffers bound to the uniform blocks used by the program.
+    angle::Result getUniformBlockBindGroup(ContextWgpu *contextWgpu,
+                                           webgpu::BindGroupHandle *outBindGroup);
 
     angle::Result resizeUniformBlockMemory(const gl::ShaderMap<size_t> &requiredBufferSize);
 
@@ -141,6 +144,13 @@ class ProgramExecutableWgpu : public ProgramExecutableImpl
     // Holds the most recent samplers and textures BindGroup. Note there may be others in the
     // command buffer.
     webgpu::BindGroupHandle mSamplersAndTexturesBindGroup;
+
+    // Holds the binding group layout for the uniform blocks.
+    webgpu::BindGroupLayoutHandle mUniformBlocksBindGroupLayout;
+    // Holds the most recent uniform blocks BindGroup, and the entries it was created with, so it is
+    // only recreated when the buffer bindings change.
+    webgpu::BindGroupHandle mUniformBlocksBindGroup;
+    std::vector<WGPUBindGroupEntry> mUniformBlocksBindGroupEntries;
 };
 
 }  // namespace rx

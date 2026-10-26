@@ -22,6 +22,7 @@
 #include "libANGLE/Program.h"
 #include "libANGLE/ProgramExecutable.h"
 #include "libANGLE/renderer/renderer_utils.h"
+#include "libANGLE/renderer/wgpu/BufferWgpu.h"
 #include "libANGLE/renderer/wgpu/ContextWgpu.h"
 #include "libANGLE/renderer/wgpu/TextureWgpu.h"
 #include "libANGLE/renderer/wgpu/wgpu_helpers.h"
@@ -222,6 +223,85 @@ angle::Result ProgramExecutableWgpu::getSamplerAndTextureBindGroup(
     ASSERT(mSamplersAndTexturesBindGroup);
     *outBindGroup = mSamplersAndTexturesBindGroup;
 
+    return angle::Result::Continue;
+}
+
+angle::Result ProgramExecutableWgpu::getUniformBlockBindGroup(ContextWgpu *contextWgpu,
+                                                              webgpu::BindGroupHandle *outBindGroup)
+{
+    const DawnProcTable *wgpu                            = webgpu::GetProcs(contextWgpu);
+    const gl::State &glState                             = contextWgpu->getState();
+    const std::vector<gl::InterfaceBlock> &uniformBlocks = mExecutable->getUniformBlocks();
+    const uint64_t maxBindingSize =
+        contextWgpu->getDisplay()->getLimitsWgpu().maxUniformBufferBindingSize;
+
+    std::vector<WGPUBindGroupEntry> bindings;
+    bindings.reserve(uniformBlocks.size());
+    for (uint32_t blockIndex = 0; blockIndex < uniformBlocks.size(); ++blockIndex)
+    {
+        const gl::InterfaceBlock &block = uniformBlocks[blockIndex];
+        // WGSL structs in the uniform address space have a size that is a multiple of 16.
+        const uint64_t blockSize = roundUpPow2<uint64_t>(std::max(block.pod.dataSize, 1u), 16);
+
+        const gl::OffsetBindingPointer<gl::Buffer> &bufferBinding =
+            glState.getIndexedUniformBuffer(mExecutable->getUniformBlockBinding(blockIndex));
+        gl::Buffer *buffer = bufferBinding.get();
+
+        webgpu::BufferHelper *bufferHelper = nullptr;
+        uint64_t offset                    = 0;
+        uint64_t size                      = 0;
+        if (buffer != nullptr && buffer->getSize() > 0)
+        {
+            bufferHelper = &webgpu::GetImpl(buffer)->getBuffer();
+            offset       = bufferBinding.getOffset();
+            // A size of 0 means the whole buffer was bound with glBindBufferBase().
+            size =
+                bufferBinding.getSize() != 0 ? bufferBinding.getSize() : buffer->getSize() - offset;
+        }
+        else
+        {
+            // Reading from a uniform block without a buffer bound is undefined in GL, but WebGPU
+            // requires a buffer, so bind zeros.
+            ANGLE_TRY(contextWgpu->getZeroUniformBuffer(blockSize, &bufferHelper));
+            size = blockSize;
+        }
+
+        // The binding must be at least as big as the WGSL struct.  Using the size of the actual
+        // allocation lets bindings of exactly the GL block size satisfy that.
+        size = std::max(size, blockSize);
+        size = std::min({size, bufferHelper->actualSize() - offset, maxBindingSize});
+
+        if (bufferHelper->getMappedState())
+        {
+            ANGLE_TRY(bufferHelper->unmap());
+        }
+
+        WGPUBindGroupEntry bindGroupEntry = WGPU_BIND_GROUP_ENTRY_INIT;
+        bindGroupEntry.binding            = blockIndex;
+        bindGroupEntry.buffer             = bufferHelper->getBuffer().get();
+        bindGroupEntry.offset             = offset;
+        bindGroupEntry.size               = size;
+        bindings.push_back(bindGroupEntry);
+    }
+
+    auto entriesEqual = [](const WGPUBindGroupEntry &a, const WGPUBindGroupEntry &b) {
+        return a.binding == b.binding && a.buffer == b.buffer && a.offset == b.offset &&
+               a.size == b.size;
+    };
+    if (!mUniformBlocksBindGroup || bindings.size() != mUniformBlocksBindGroupEntries.size() ||
+        !std::equal(bindings.begin(), bindings.end(), mUniformBlocksBindGroupEntries.begin(),
+                    entriesEqual))
+    {
+        WGPUBindGroupDescriptor bindGroupDesc = WGPU_BIND_GROUP_DESCRIPTOR_INIT;
+        bindGroupDesc.layout                  = mUniformBlocksBindGroupLayout.get();
+        bindGroupDesc.entryCount              = bindings.size();
+        bindGroupDesc.entries                 = bindings.data();
+        mUniformBlocksBindGroup               = webgpu::BindGroupHandle::Acquire(
+            wgpu, wgpu->deviceCreateBindGroup(contextWgpu->getDevice().get(), &bindGroupDesc));
+        mUniformBlocksBindGroupEntries = std::move(bindings);
+    }
+
+    *outBindGroup = mUniformBlocksBindGroup;
     return angle::Result::Continue;
 }
 
@@ -587,7 +667,28 @@ void ProgramExecutableWgpu::genBindingLayoutIfNecessary(ContextWgpu *context)
 
     // Driver uniforms bind groups are handled by ContextWgpu.
 
-    // TODO(anglebug.com/376553328): now add UBO bindings.
+    // Add the uniform blocks to their own bind group, with the binding index being the index of
+    // the block in the program (see WgslAssignUniformBlockBindings()).
+    std::vector<WGPUBindGroupLayoutEntry> uniformBlocksBindGroupLayoutEntries;
+    for (size_t blockIndex = 0; blockIndex < mExecutable->getUniformBlocks().size(); ++blockIndex)
+    {
+        WGPUBindGroupLayoutEntry bindGroupLayoutEntry = WGPU_BIND_GROUP_LAYOUT_ENTRY_INIT;
+        bindGroupLayoutEntry.visibility         = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+        bindGroupLayoutEntry.binding            = angle::base::checked_cast<uint32_t>(blockIndex);
+        bindGroupLayoutEntry.buffer.type        = WGPUBufferBindingType_Uniform;
+        bindGroupLayoutEntry.texture.sampleType = WGPUTextureSampleType_BindingNotUsed;
+        bindGroupLayoutEntry.sampler.type       = WGPUSamplerBindingType_BindingNotUsed;
+        bindGroupLayoutEntry.storageTexture.access = WGPUStorageTextureAccess_BindingNotUsed;
+        uniformBlocksBindGroupLayoutEntries.push_back(bindGroupLayoutEntry);
+    }
+
+    WGPUBindGroupLayoutDescriptor uniformBlocksBindGroupLayoutDesc =
+        WGPU_BIND_GROUP_LAYOUT_DESCRIPTOR_INIT;
+    uniformBlocksBindGroupLayoutDesc.entryCount = uniformBlocksBindGroupLayoutEntries.size();
+    uniformBlocksBindGroupLayoutDesc.entries    = uniformBlocksBindGroupLayoutEntries.data();
+    mUniformBlocksBindGroupLayout               = webgpu::BindGroupLayoutHandle::Acquire(
+        wgpu, wgpu->deviceCreateBindGroupLayout(context->getDevice().get(),
+                                                              &uniformBlocksBindGroupLayoutDesc));
 
     // Create the pipeline layout. This is a list where each element N corresponds to the
     // @group(N) in the compiled shaders.
@@ -596,7 +697,8 @@ void ProgramExecutableWgpu::genBindingLayoutIfNecessary(ContextWgpu *context)
     groupLayouts[sh::kDefaultUniformBlockBindGroup] = mDefaultBindGroupLayout.get();
     groupLayouts[sh::kTextureAndSamplerBindGroup]   = mSamplersAndTexturesBindGroupLayout.get();
     groupLayouts[sh::kDriverUniformBindGroup] = context->getDriverUniformBindGroupLayout().get();
-    static_assert(sh::kDriverUniformBindGroup == sh::kMaxBindGroup,
+    groupLayouts[sh::kUniformBlockBindGroup]  = mUniformBlocksBindGroupLayout.get();
+    static_assert(sh::kUniformBlockBindGroup == sh::kMaxBindGroup,
                   "More bind groups added without changing the layout");
 
     WGPUPipelineLayoutDescriptor layoutDesc = WGPU_PIPELINE_LAYOUT_DESCRIPTOR_INIT;

@@ -2515,6 +2515,16 @@
 42267012 WGPU : ClearTestES3.ClearAndReadPixels3DTexture/* = SKIP
 42267012 WGPU : ClearTestES3.DrawAfterClearWithGaps/* = SKIP
 42267012 WGPU : ClearTestES3.*WithBlit*/* = SKIP
+// Row-major matrices and arrays of uniform blocks are not supported yet.
+376553328 WGPU : UniformBufferTest.*RowMajor*/* = SKIP
+376553328 WGPU : UniformBufferTest.ActiveUniformNames/* = SKIP
+376553328 WGPU : UniformBufferTest.BlockArrayContainingArrayOfStructs/* = SKIP
+376553328 WGPU : UniformBufferTest.ManyBlocks/* = SKIP
+376553328 WGPU : UniformBufferTest.SameBufferDifferentMetalSize/* = SKIP
+// Buffer updates are not ordered with draws, and glMapBufferRange/glCopyBufferSubData are no-ops.
+42267100 WGPU : UniformBufferTest.CopySubDataPartialOverwritePreservesRemainingUniformData/* = SKIP
+42267100 WGPU : UniformBufferTest.DrawThenUpdateThenDraw/* = SKIP
+42267100 WGPU : UniformBufferTest.VeryLargeReadback/* = SKIP
 // Some tests use too many attachments
 483423899 WGPU : ClearTestES3.ClearStencilAfterDraw/* = SKIP
 483423899 WGPU : ClearTestES3.ClearMaxAttachments*/* = SKIP

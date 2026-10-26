@@ -28,13 +28,15 @@ WGPUBufferUsage GetDefaultWGPUBufferUsageForBinding(gl::BufferBinding binding)
 {
     switch (binding)
     {
+        // A GL buffer can be bound to any target after it is created, so buffers created through
+        // these targets get all the usages that these targets need.
         case gl::BufferBinding::Array:
         case gl::BufferBinding::ElementArray:
-            return WGPUBufferUsage_Vertex | WGPUBufferUsage_Index | WGPUBufferUsage_CopySrc |
-                   WGPUBufferUsage_CopyDst;
-
         case gl::BufferBinding::Uniform:
-            return WGPUBufferUsage_Uniform | WGPUBufferUsage_CopySrc | WGPUBufferUsage_CopyDst;
+        case gl::BufferBinding::CopyRead:
+        case gl::BufferBinding::CopyWrite:
+            return WGPUBufferUsage_Vertex | WGPUBufferUsage_Index | WGPUBufferUsage_Uniform |
+                   WGPUBufferUsage_CopySrc | WGPUBufferUsage_CopyDst;
 
         case gl::BufferBinding::PixelPack:
             return WGPUBufferUsage_MapRead | WGPUBufferUsage_CopyDst;
@@ -42,8 +44,6 @@ WGPUBufferUsage GetDefaultWGPUBufferUsageForBinding(gl::BufferBinding binding)
         case gl::BufferBinding::PixelUnpack:
             return WGPUBufferUsage_MapWrite | WGPUBufferUsage_CopySrc;
 
-        case gl::BufferBinding::CopyRead:
-        case gl::BufferBinding::CopyWrite:
         case gl::BufferBinding::ShaderStorage:
         case gl::BufferBinding::Texture:
         case gl::BufferBinding::TransformFeedback:

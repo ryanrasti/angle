@@ -1243,7 +1243,10 @@ angle::Result ContextWgpu::setupDraw(const gl::Context *context,
     }
 
     ProgramExecutableWgpu *executableWgpu = webgpu::GetImpl(mState.getProgramExecutable());
-    if (executableWgpu->checkDirtyUniforms() || executableWgpu->hasDirtySamplerBindings())
+    // The buffers bound to uniform blocks may be changed or respecified without notifying the
+    // context, so check them on every draw. The bind group is only recreated if they changed.
+    if (executableWgpu->checkDirtyUniforms() || executableWgpu->hasDirtySamplerBindings() ||
+        !mState.getProgramExecutable()->getUniformBlocks().empty())
     {
         mDirtyBits.set(DIRTY_BIT_BIND_GROUPS);
     }
@@ -1557,6 +1560,27 @@ angle::Result ContextWgpu::handleDirtyBindGroups(DirtyBits::Iterator *dirtyBitsI
     // Creating the driver uniform bind group is handled by handleDirtyDriverUniforms().
     mCommandBuffer.setBindGroup(sh::kDriverUniformBindGroup, mDriverUniformsBindGroup);
 
+    webgpu::BindGroupHandle uniformBlockBindGroup;
+    ANGLE_TRY(executableWgpu->getUniformBlockBindGroup(this, &uniformBlockBindGroup));
+    mCommandBuffer.setBindGroup(sh::kUniformBlockBindGroup, uniformBlockBindGroup);
+
+    return angle::Result::Continue;
+}
+
+angle::Result ContextWgpu::getZeroUniformBuffer(size_t minSize, webgpu::BufferHelper **bufferOut)
+{
+    if (!mZeroUniformBuffer)
+    {
+        mZeroUniformBuffer = std::make_unique<webgpu::BufferHelper>();
+    }
+    if (!mZeroUniformBuffer->valid() || mZeroUniformBuffer->requestedSize() < minSize)
+    {
+        // Buffers are zero-initialized by WebGPU.
+        ANGLE_TRY(mZeroUniformBuffer->initBuffer(webgpu::GetProcs(this), getDevice(), minSize,
+                                                 WGPUBufferUsage_Uniform,
+                                                 webgpu::MapAtCreation::No));
+    }
+    *bufferOut = mZeroUniformBuffer.get();
     return angle::Result::Continue;
 }
 

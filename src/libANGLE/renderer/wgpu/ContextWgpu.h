@@ -24,6 +24,10 @@
 
 namespace rx
 {
+namespace webgpu
+{
+class BufferHelper;
+}  // namespace webgpu
 
 class ContextWgpu : public ContextImpl
 {
@@ -339,6 +343,10 @@ class ContextWgpu : public ContextImpl
         return mDriverUniformsBindGroupLayout;
     }
 
+    // Returns a zero-filled uniform buffer of at least `minSize` bytes, to bind to uniform blocks
+    // that have no buffer bound.
+    angle::Result getZeroUniformBuffer(size_t minSize, webgpu::BufferHelper **bufferOut);
+
     webgpu::UtilsWgpu *getUtils() { return &mUtils; }
     webgpu::CommandBuffer &getCommandBuffer() { return mCommandBuffer; }
 
@@ -438,6 +446,8 @@ class ContextWgpu : public ContextImpl
     // Holds the most recent driver uniforms BindGroup. Note there may be others in the
     // command buffer.
     webgpu::BindGroupHandle mDriverUniformsBindGroup;
+
+    std::unique_ptr<webgpu::BufferHelper> mZeroUniformBuffer;
 
     webgpu::UtilsWgpu mUtils;
 };

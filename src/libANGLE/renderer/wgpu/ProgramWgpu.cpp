@@ -17,6 +17,7 @@
 #include "common/log_utils.h"
 #include "libANGLE/Error.h"
 #include "libANGLE/ProgramExecutable.h"
+#include "libANGLE/ProgramLinkedResources.h"
 #include "libANGLE/renderer/wgpu/ProgramExecutableWgpu.h"
 #include "libANGLE/renderer/wgpu/wgpu_utils.h"
 #include "libANGLE/renderer/wgpu/wgpu_wgsl_util.h"
@@ -262,6 +263,12 @@ class CreateWGPUShaderModuleTask : public LinkSubTask
     angle::Result mResult = angle::Result::Continue;
 };
 
+class Std140BlockLayoutEncoderFactory : public gl::CustomBlockLayoutEncoderFactory
+{
+  public:
+    sh::BlockLayoutEncoder *makeEncoder() override { return new sh::Std140BlockEncoder(); }
+};
+
 class LinkTaskWgpu : public LinkTask
 {
   public:
@@ -289,6 +296,13 @@ class LinkTaskWgpu : public LinkTask
 
         ProgramExecutableWgpu *executable =
             GetImplAs<ProgramExecutableWgpu>(&mProgram->getState().getExecutable());
+
+        // Link the uniform blocks (laid out with std140, which WGSL's uniform address space
+        // layout matches with the help of the translator) before the shader modules are created,
+        // as their binding indices are assigned in the WGSL source.
+        Std140BlockLayoutEncoderFactory std140EncoderFactory;
+        gl::ProgramLinkedResourcesLinker linker(&std140EncoderFactory);
+        linker.linkResources(mProgram->getState(), resources);
 
         const gl::ShaderMap<gl::SharedCompiledShaderState> &shaders =
             mProgram->getState().getAttachedShaders();

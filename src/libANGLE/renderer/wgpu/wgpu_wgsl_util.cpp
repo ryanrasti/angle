@@ -138,6 +138,66 @@ int GetShaderVarLocationCount(GLenum varType, unsigned int arraySize)
     return arraySize ? count * static_cast<int>(arraySize) : count;
 }
 
+// Replaces the uniform block binding markers emitted by the translator (see
+// OutputUniformBlocksAndSamplers()) with the index of the block in the program, e.g.
+// `@group(3) @binding(@@@@@@Block@@) var<uniform> ...` becomes
+// `@group(3) @binding(0) var<uniform> ...`.
+std::string WgslAssignUniformBlockBindings(const gl::ProgramExecutable &executable,
+                                           const std::string &shaderSource)
+{
+    std::map<std::string, uint32_t> blockNameToIndex;
+    const std::vector<gl::InterfaceBlock> &uniformBlocks = executable.getUniformBlocks();
+    for (uint32_t blockIndex = 0; blockIndex < uniformBlocks.size(); ++blockIndex)
+    {
+        blockNameToIndex[uniformBlocks[blockIndex].name] = blockIndex;
+    }
+
+    const std::string markerStart = std::string("@binding(") + sh::kUniformBlockBindingMarkerStart;
+    const std::string markerEnd   = std::string(sh::kUniformBlockBindingMarkerEnd) + ")";
+
+    std::string newSource;
+    newSource.reserve(shaderSource.size());
+
+    size_t currPos = 0;
+    while (true)
+    {
+        size_t markerPos = shaderSource.find(markerStart, currPos);
+        if (markerPos == std::string::npos)
+        {
+            newSource.append(shaderSource, currPos);
+            break;
+        }
+
+        size_t namePos    = markerPos + markerStart.size();
+        size_t nameEndPos = shaderSource.find(markerEnd, namePos);
+        ASSERT(nameEndPos != std::string::npos);
+        std::string blockName = shaderSource.substr(namePos, nameEndPos - namePos);
+
+        auto blockIter = blockNameToIndex.find(blockName);
+        if (blockIter == blockNameToIndex.end())
+        {
+            // The block is not part of the linked program, so it can't be used. Delete its
+            // declaration, which starts at the beginning of the line.
+            size_t lineStart = shaderSource.rfind('\n', markerPos);
+            lineStart        = lineStart == std::string::npos ? 0 : lineStart + 1;
+            ASSERT(lineStart >= currPos);
+            newSource.append(shaderSource, currPos, lineStart - currPos);
+            size_t lineEnd = shaderSource.find(";\n", nameEndPos);
+            ASSERT(lineEnd != std::string::npos);
+            currPos = lineEnd + 2;
+            continue;
+        }
+
+        newSource.append(shaderSource, currPos, markerPos - currPos);
+        newSource.append("@binding(");
+        newSource.append(std::to_string(blockIter->second));
+        newSource.append(")");
+        currPos = nameEndPos + markerEnd.size();
+    }
+
+    return newSource;
+}
+
 void AddShaderVarLocation(std::map<std::string, int> &varNameToLocation,
                           std::string varName,
                           int &startLoc,
@@ -275,7 +335,8 @@ std::string WgslAssignLocationsAndSamplerBindings(const gl::ProgramExecutable &e
             textureIndex * 2 + 1;
     }
 
-    return WgslReplaceMarkers(shaderSource, varNameToLocation);
+    return WgslAssignUniformBlockBindings(executable,
+                                          WgslReplaceMarkers(shaderSource, varNameToLocation));
 }
 
 template std::string WgslAssignLocationsAndSamplerBindings<gl::ProgramInput>(

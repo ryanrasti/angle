@@ -333,8 +333,41 @@ bool OutputUniformBlocksAndSamplers(TCompiler *compiler,
     output << "@group(" << kDriverUniformBindGroup << ") @binding(" << kDriverUniformBlockBinding
            << ") var<uniform> " << kDriverUniformsVarName << " : " << kDriverUniformsBlockName
            << ";\n";
-    // TODO(anglebug.com/376553328): now output the UBOs in `compiler->getUniformBlocks()` in its
-    // own bind group.
+
+    // Output the user-defined uniform blocks in their own bind group. ReduceInterfaceBlocks has
+    // turned each of them into a struct and an instance variable of that struct type. The binding
+    // index of each block is only known at link time, so emit a marker containing the block name,
+    // e.g. `@group(3) @binding(@@@@@@Block@@) var<uniform> _uinstance : _uBlock;`.
+    for (const InterfaceBlock &block : compiler->getUniformBlocks())
+    {
+        for (const auto &globalVarIter : globalVars)
+        {
+            const TIntermSymbol *declSymbol = &ViewDeclaration(*globalVarIter.second).symbol;
+            const TType &declType           = declSymbol->getType();
+            if (declType.getQualifier() != EvqBuffer || declType.getStruct() == nullptr ||
+                !declType.getStruct()->isImplementingInterfaceBlock() ||
+                block.name != declType.getStruct()->name().data())
+            {
+                continue;
+            }
+
+            if (declType.isArray())
+            {
+                // TODO(anglebug.com/376553328): support arrays of uniform blocks, which need to be
+                // split into one variable per element.
+                UNIMPLEMENTED();
+                return false;
+            }
+
+            output << "@group(" << kUniformBlockBindGroup << ") @binding("
+                   << kUniformBlockBindingMarkerStart << block.name << kUniformBlockBindingMarkerEnd
+                   << ") var<uniform> ";
+            WriteNameOf(output, declSymbol->variable(), kUserVariableNamePrefix);
+            output << " : ";
+            WriteWgslType(output, declType, {WgslAddressSpace::Uniform});
+            output << ";\n";
+        }
+    }
 
     // Output split texture/sampler variables.
     for (const auto &globalVarIter : globalVars)

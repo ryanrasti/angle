@@ -382,7 +382,7 @@ void GenerateCaps(const WGPULimits &limitsWgpu,
     constexpr uint32_t kShaderStageCount = 2;
 
     glCaps->maxUniformBufferBindings = maxPerStageUniformBuffers * kShaderStageCount;
-    glCaps->maxUniformBlockSize      = rx::LimitToInt(limitsWgpu.maxBufferSize);
+    glCaps->maxUniformBlockSize      = maxUniformBlockSize;
     glCaps->uniformBufferOffsetAlignment =
         rx::LimitToInt(limitsWgpu.minUniformBufferOffsetAlignment);
     glCaps->maxCombinedUniformBlocks = glCaps->maxUniformBufferBindings;

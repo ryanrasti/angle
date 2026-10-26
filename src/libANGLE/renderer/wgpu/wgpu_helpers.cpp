@@ -764,7 +764,11 @@ angle::Result BufferHelper::initBuffer(const DawnProcTable *wgpu,
 {
     mProcTable = wgpu;
 
-    size_t safeBufferSize = rx::roundUpPow2(size, kBufferSizeAlignment);
+    // Uniform buffers are rounded up to 16 bytes so that a uniform block can be bound with the
+    // size of the corresponding WGSL struct, which is a multiple of 16.
+    size_t safeBufferSize =
+        rx::roundUpPow2(size, (usage & WGPUBufferUsage_Uniform) ? kUniformBufferSizeAlignment
+                                                                : kBufferSizeAlignment);
     WGPUBufferDescriptor descriptor = WGPU_BUFFER_DESCRIPTOR_INIT;
     descriptor.size             = safeBufferSize;
     descriptor.usage            = usage;
