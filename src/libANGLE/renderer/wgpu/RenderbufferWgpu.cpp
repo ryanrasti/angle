@@ -64,9 +64,12 @@ angle::Result RenderbufferWgpu::setStorageMultisample(const gl::Context *context
                                         WGPUTextureUsage_RenderAttachment |
                                         WGPUTextureUsage_TextureBinding;
 
+    // A sample count of 0 means a single-sampled renderbuffer in GL.
+    const uint32_t sampleCount = std::max(samples, 1);
+
     WGPUTextureDescriptor desc = mImage->createTextureDescriptor(
         kUsage, WGPUTextureDimension_2D, gl_wgpu::GetExtent3D(gl::Extents(width, height, 1)),
-        webgpuFormat.getActualWgpuTextureFormat(), /*mipLevelCount*/ 1, samples);
+        webgpuFormat.getActualWgpuTextureFormat(), /*mipLevelCount*/ 1, sampleCount);
 
     ANGLE_TRY(mImage->initImage(wgpu, webgpuFormat.getIntendedFormatID(),
                                 webgpuFormat.getActualImageFormatID(), contextWgpu->getDevice(),
