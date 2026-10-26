@@ -390,7 +390,9 @@ void GenerateCaps(const WGPULimits &limitsWgpu,
     glCaps->maxVaryingVectors        = rx::LimitToInt(limitsWgpu.maxInterStageShaderVariables);
     glCaps->maxCombinedTextureImageUnits =
         rx::LimitToInt(limitsWgpu.maxSamplersPerShaderStage * kShaderStageCount);
-    glCaps->maxCombinedShaderOutputResources = 0;
+    // Shader storage blocks and images are not supported, so the only output resources are the
+    // fragment shader outputs.
+    glCaps->maxCombinedShaderOutputResources = glCaps->maxDrawBuffers;
 
     glCaps->maxUniformLocations                = maxUniformVectors;
     glCaps->maxAtomicCounterBufferBindings     = 0;
