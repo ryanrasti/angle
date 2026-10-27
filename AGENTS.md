@@ -147,6 +147,14 @@ The test-enable hack instantiates the ES3 end2end suites for WebGPU:
 When a commit on `wgpu-es3` enables another suite for WebGPU upstream-style,
 remove that explicit `ES3_WEBGPU()` again in the local commit.
 
+Pushing: a plain `git push github ...` from this checkout stalls. It is a shallow,
+partial clone, so `pack-objects` lazily fetches blobs from googlesource and
+GitHub drops the idle connection. Push from a helper repo instead:
+`git init`, then `git fetch --depth=1 github <base sha>` (a complete clone of the
+base), then `git fetch /home/ryan/src/angle wgpu-es3:wgpu-es3
+wgpu-es3-local:wgpu-es3-local`, then `git push github wgpu-es3 wgpu-es3-local`.
+The commit hashes stay identical.
+
 ### Environment notes (out/ is gitignored; copies of its scripts and docs are in `handoff/`)
 
 - `out/env.sh` (a copy is in `handoff/`) was extended:
