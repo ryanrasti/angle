@@ -31,6 +31,55 @@
 
 namespace rx
 {
+namespace
+{
+// Returns the swizzle that makes a texture with the emulated format `actualFormat` read like a
+// texture with `intendedFormat`, e.g. luminance formats are emulated with red formats.
+gl::SwizzleState GetFormatEmulationSwizzle(const angle::Format &intendedFormat)
+{
+    gl::SwizzleState swizzle;
+    if (intendedFormat.isLUMA())
+    {
+        const GLenum swizzleRGB = intendedFormat.luminanceBits > 0 ? GL_RED : GL_ZERO;
+        const GLenum swizzleA   = intendedFormat.luminanceBits > 0
+                                      ? (intendedFormat.alphaBits > 0 ? GL_GREEN : GL_ONE)
+                                      : GL_RED;
+        return gl::SwizzleState(swizzleRGB, swizzleRGB, swizzleRGB, swizzleA);
+    }
+    if (!intendedFormat.isBlock && !intendedFormat.hasDepthOrStencilBits())
+    {
+        // Channels that the intended format doesn't have may exist in the emulated format.
+        swizzle.swizzleRed   = intendedFormat.redBits > 0 ? GL_RED : GL_ZERO;
+        swizzle.swizzleGreen = intendedFormat.greenBits > 0 ? GL_GREEN : GL_ZERO;
+        swizzle.swizzleBlue  = intendedFormat.blueBits > 0 ? GL_BLUE : GL_ZERO;
+        swizzle.swizzleAlpha = intendedFormat.alphaBits > 0 ? GL_ALPHA : GL_ONE;
+    }
+    return swizzle;
+}
+
+// Applies the GL texture swizzle `userSwizzle` on top of `formatSwizzle`.
+gl::SwizzleState ComposeSwizzle(const gl::SwizzleState &formatSwizzle,
+                                const gl::SwizzleState &userSwizzle)
+{
+    auto apply = [&formatSwizzle](GLenum component) {
+        switch (component)
+        {
+            case GL_RED:
+                return formatSwizzle.swizzleRed;
+            case GL_GREEN:
+                return formatSwizzle.swizzleGreen;
+            case GL_BLUE:
+                return formatSwizzle.swizzleBlue;
+            case GL_ALPHA:
+                return formatSwizzle.swizzleAlpha;
+            default:
+                return component;
+        }
+    };
+    return gl::SwizzleState(apply(userSwizzle.swizzleRed), apply(userSwizzle.swizzleGreen),
+                            apply(userSwizzle.swizzleBlue), apply(userSwizzle.swizzleAlpha));
+}
+}  // namespace
 
 ProgramExecutableWgpu::ProgramExecutableWgpu(const gl::ProgramExecutable *executable)
     : ProgramExecutableImpl(executable)
@@ -195,11 +244,22 @@ angle::Result ProgramExecutableWgpu::getSamplerAndTextureBindGroup(
                 WGPUBindGroupEntry textureBindGroupEntry = WGPU_BIND_GROUP_ENTRY_INIT;
                 textureBindGroupEntry.binding = textureSlot;
 
+                // Apply the texture's swizzle and the swizzle needed for emulated formats, if
+                // texture views can swizzle.
+                gl::SwizzleState swizzle;
+                if (contextWgpu->getDisplay()->supportsTextureComponentSwizzle())
+                {
+                    const angle::Format &intendedFormat =
+                        angle::Format::Get(textureWgpu->getImage()->getIntendedFormatID());
+                    swizzle = ComposeSwizzle(GetFormatEmulationSwizzle(intendedFormat),
+                                             texture->getState().getSwizzleState());
+                }
+
                 webgpu::TextureViewHandle textureView;
                 ANGLE_TRY(textureWgpu->getImage()->createFullTextureView(
                     textureView,
-                    /*desiredViewDimension=*/gl_wgpu::GetWgpuTextureViewDimension(
-                        samplerBinding.textureType)));
+                    /*desiredViewDimension=*/
+                    gl_wgpu::GetWgpuTextureViewDimension(samplerBinding.textureType), &swizzle));
                 textureViews.push_back(textureView);
                 textureBindGroupEntry.textureView = textureView.get();
                 bindings.push_back(textureBindGroupEntry);

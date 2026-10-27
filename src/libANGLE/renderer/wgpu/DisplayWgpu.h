@@ -122,6 +122,8 @@ class DisplayWgpu : public DisplayImpl, public ThreadSafeDisplayWgpu
     webgpu::InstanceHandle getInstance() { return mInstance; }
 
     const WGPULimits &getLimitsWgpu() const { return mLimitsWgpu; }
+    // Whether texture views can swizzle their components (an optional WebGPU feature).
+    bool supportsTextureComponentSwizzle() const { return mSupportsTextureComponentSwizzle; }
 
     const gl::Caps &getGLCaps() const { return mGLCaps; }
     const gl::TextureCapsMap &getGLTextureCaps() const { return mGLTextureCaps; }
@@ -158,6 +160,7 @@ class DisplayWgpu : public DisplayImpl, public ThreadSafeDisplayWgpu
     webgpu::QueueHandle mQueue;
 
     WGPULimits mLimitsWgpu;
+    bool mSupportsTextureComponentSwizzle = false;
 
     gl::Caps mGLCaps;
     gl::TextureCapsMap mGLTextureCaps;

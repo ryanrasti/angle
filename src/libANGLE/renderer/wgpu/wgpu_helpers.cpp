@@ -5,7 +5,9 @@
 //
 
 #include "libANGLE/renderer/wgpu/wgpu_helpers.h"
+
 #include "common/unsafe_buffers.h"
+#include "libANGLE/Texture.h"
 
 #include <algorithm>
 
@@ -611,12 +613,13 @@ angle::Result ImageHelper::createTextureViewSingleLevel(gl::LevelIndex targetLev
 }
 
 angle::Result ImageHelper::createFullTextureView(TextureViewHandle &textureViewOut,
-                                                 WGPUTextureViewDimension desiredViewDimension)
+                                                 WGPUTextureViewDimension desiredViewDimension,
+                                                 const gl::SwizzleState *swizzle)
 {
     return createTextureView(mFirstAllocatedLevel, mTextureDescriptor.mipLevelCount, 0,
                              mTextureDescriptor.size.depthOrArrayLayers, textureViewOut,
                              desiredViewDimension, WGPUTextureAspect_All,
-                             WGPUTextureFormat_Undefined);
+                             WGPUTextureFormat_Undefined, swizzle);
 }
 
 angle::Result ImageHelper::createTextureView(
@@ -627,7 +630,8 @@ angle::Result ImageHelper::createTextureView(
     TextureViewHandle &textureViewOut,
     Optional<WGPUTextureViewDimension> desiredViewDimension,
     WGPUTextureAspect aspect,
-    WGPUTextureFormat format)
+    WGPUTextureFormat format,
+    const gl::SwizzleState *swizzle)
 {
     if (!isTextureLevelInAllocatedImage(targetLevel))
     {
@@ -682,6 +686,17 @@ angle::Result ImageHelper::createTextureView(
         {
             textureViewDesc.format = GetStencilOnlyFormat(mTextureDescriptor.format);
         }
+    }
+
+    WGPUTextureComponentSwizzleDescriptor swizzleDesc =
+        WGPU_TEXTURE_COMPONENT_SWIZZLE_DESCRIPTOR_INIT;
+    if (swizzle != nullptr && swizzle->swizzleRequired())
+    {
+        swizzleDesc.swizzle.r       = gl_wgpu::GetComponentSwizzle(swizzle->swizzleRed);
+        swizzleDesc.swizzle.g       = gl_wgpu::GetComponentSwizzle(swizzle->swizzleGreen);
+        swizzleDesc.swizzle.b       = gl_wgpu::GetComponentSwizzle(swizzle->swizzleBlue);
+        swizzleDesc.swizzle.a       = gl_wgpu::GetComponentSwizzle(swizzle->swizzleAlpha);
+        textureViewDesc.nextInChain = &swizzleDesc.chain;
     }
 
     textureViewOut = TextureViewHandle::Acquire(

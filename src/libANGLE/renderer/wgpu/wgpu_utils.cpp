@@ -783,6 +783,28 @@ WGPUBlendOperation GetBlendEquation(gl::BlendEquationType blendEquation)
     }
 }
 
+WGPUComponentSwizzle GetComponentSwizzle(GLenum swizzle)
+{
+    switch (swizzle)
+    {
+        case GL_RED:
+            return WGPUComponentSwizzle_R;
+        case GL_GREEN:
+            return WGPUComponentSwizzle_G;
+        case GL_BLUE:
+            return WGPUComponentSwizzle_B;
+        case GL_ALPHA:
+            return WGPUComponentSwizzle_A;
+        case GL_ZERO:
+            return WGPUComponentSwizzle_Zero;
+        case GL_ONE:
+            return WGPUComponentSwizzle_One;
+        default:
+            UNREACHABLE();
+            return WGPUComponentSwizzle_Undefined;
+    }
+}
+
 WGPUTextureViewDimension GetWgpuTextureViewDimension(gl::TextureType textureType)
 {
     switch (textureType)

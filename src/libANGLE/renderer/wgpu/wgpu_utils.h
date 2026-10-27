@@ -503,6 +503,9 @@ namespace gl_wgpu
 {
 webgpu::LevelIndex getLevelIndex(gl::LevelIndex levelGl, gl::LevelIndex baseLevel);
 WGPUTextureViewDimension GetWgpuTextureViewDimension(gl::TextureType textureType);
+
+// Converts a GL swizzle value (GL_RED, ..., GL_ZERO, GL_ONE) to a WebGPU component swizzle.
+WGPUComponentSwizzle GetComponentSwizzle(GLenum swizzle);
 WGPUTextureDimension GetWgpuTextureDimension(gl::TextureType glTextureType);
 WGPUExtent3D GetExtent3D(const gl::Extents &glExtent);
 

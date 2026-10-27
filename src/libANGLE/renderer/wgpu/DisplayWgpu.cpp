@@ -94,6 +94,8 @@ egl::Error DisplayWgpu::initialize(egl::Display *display)
 
     mLimitsWgpu = WGPU_LIMITS_INIT;
     mProcTable.deviceGetLimits(mDevice.get(), &mLimitsWgpu);
+    mSupportsTextureComponentSwizzle =
+        mProcTable.deviceHasFeature(mDevice.get(), WGPUFeatureName_TextureComponentSwizzle);
 
     mWindowSystem = angle::NativeWindowSystem::Other;
 #if defined(ANGLE_USE_X11) || defined(ANGLE_USE_WAYLAND)
@@ -496,7 +498,12 @@ egl::Error DisplayWgpu::createWgpuDevice()
 
     mAdapter = adapterResult.adapter;
 
-    std::vector<WGPUFeatureName> requiredFeatures;  // empty for now
+    // Optional features, used when available.
+    std::vector<WGPUFeatureName> requiredFeatures;
+    if (mProcTable.adapterHasFeature(mAdapter.get(), WGPUFeatureName_TextureComponentSwizzle))
+    {
+        requiredFeatures.push_back(WGPUFeatureName_TextureComponentSwizzle);
+    }
 
     WGPUDeviceDescriptor deviceDesc = WGPU_DEVICE_DESCRIPTOR_INIT;
     deviceDesc.requiredFeatureCount = requiredFeatures.size();

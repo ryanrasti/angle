@@ -17,6 +17,11 @@
 #include "libANGLE/renderer/wgpu/ContextWgpu.h"
 #include "libANGLE/renderer/wgpu/wgpu_utils.h"
 
+namespace gl
+{
+struct SwizzleState;
+}  // namespace gl
+
 namespace rx
 {
 
@@ -192,8 +197,11 @@ class ImageHelper : public angle::Subject
                                                TextureViewHandle &textureViewOut,
                                                WGPUTextureAspect aspect,
                                                WGPUTextureFormat format);
+    // If `swizzle` is not null, the view swizzles its components accordingly, which requires the
+    // TextureComponentSwizzle feature and is only valid for views that are sampled.
     angle::Result createFullTextureView(TextureViewHandle &textureViewOut,
-                                        WGPUTextureViewDimension desiredViewDimension);
+                                        WGPUTextureViewDimension desiredViewDimension,
+                                        const gl::SwizzleState *swizzle = nullptr);
     angle::Result createTextureView(gl::LevelIndex targetLevel,
                                     uint32_t levelCount,
                                     uint32_t layerIndex,
@@ -201,7 +209,8 @@ class ImageHelper : public angle::Subject
                                     TextureViewHandle &textureViewOut,
                                     Optional<WGPUTextureViewDimension> desiredViewDimension,
                                     WGPUTextureAspect aspect,
-                                    WGPUTextureFormat format);
+                                    WGPUTextureFormat format,
+                                    const gl::SwizzleState *swizzle = nullptr);
     LevelIndex toWgpuLevel(gl::LevelIndex levelIndexGl) const;
     gl::LevelIndex toGlLevel(LevelIndex levelIndexWgpu) const;
     bool isTextureLevelInAllocatedImage(gl::LevelIndex textureLevel) const;
