@@ -68,6 +68,11 @@ constexpr angle::PackedEnumMap<webgpu::RenderPassClosureReason, const char *>
         {webgpu::RenderPassClosureReason::CopyImage, "Render pass closed to copy image"},
         {webgpu::RenderPassClosureReason::ClearWithDraw,
          "Render pass closed to clear with a draw call (e.g. for scissored or masked clears)"},
+        {webgpu::RenderPassClosureReason::BufferUpdate,
+         "Render pass closed to update a buffer used by the render pass"},
+        {webgpu::RenderPassClosureReason::BufferCopy, "Render pass closed to copy a buffer"},
+        {webgpu::RenderPassClosureReason::BufferReadback,
+         "Render pass closed to read back buffer data"},
     }};
 
 }  // namespace
@@ -155,6 +160,7 @@ angle::Result ContextWgpu::flush(webgpu::RenderPassClosureReason closureReason)
         mCurrentCommandEncoder            = nullptr;
 
         wgpu->queueSubmit(getQueue().get(), 1, &commandBuffer.get());
+        mPendingCommandsSerial++;
     }
 
     return angle::Result::Continue;
@@ -1346,6 +1352,24 @@ angle::Result ContextWgpu::setupDraw(const gl::Context *context,
         }
 
         mDirtyBits.reset();
+    }
+
+    // Record that the buffers used by this draw call are used by the pending commands, so that
+    // later updates to them are ordered after the draw call. Uniform buffers are recorded when
+    // their bind group is created.
+    VertexArrayWgpu *vertexArrayWgpu = GetImplAs<VertexArrayWgpu>(mState.getVertexArray());
+    for (size_t attribIndex : mState.getProgramExecutable()->getActiveAttribLocationsMask())
+    {
+        webgpu::BufferHelper *buffer = vertexArrayWgpu->getVertexBuffer(attribIndex).buffer;
+        if (buffer)
+        {
+            buffer->markUsedByPendingCommands(mPendingCommandsSerial);
+        }
+    }
+    if (dstIndexTypeOrInvalid != gl::DrawElementsType::InvalidEnum &&
+        vertexArrayWgpu->getIndexBuffer())
+    {
+        vertexArrayWgpu->getIndexBuffer()->markUsedByPendingCommands(mPendingCommandsSerial);
     }
 
     return angle::Result::Continue;

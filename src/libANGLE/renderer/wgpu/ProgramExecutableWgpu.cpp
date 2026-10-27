@@ -275,6 +275,7 @@ angle::Result ProgramExecutableWgpu::getUniformBlockBindGroup(ContextWgpu *conte
         {
             ANGLE_TRY(bufferHelper->unmap());
         }
+        bufferHelper->markUsedByPendingCommands(contextWgpu->getPendingCommandsSerial());
 
         WGPUBindGroupEntry bindGroupEntry = WGPU_BIND_GROUP_ENTRY_INIT;
         bindGroupEntry.binding            = blockIndex;

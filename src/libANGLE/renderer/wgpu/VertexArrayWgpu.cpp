@@ -222,6 +222,8 @@ angle::Result VertexArrayWgpu::syncClientArrays(
     ContextWgpu *contextWgpu       = webgpu::GetImpl(context);
     webgpu::DeviceHandle device    = webgpu::GetDevice(context);
     const uint8_t *srcIndexData    = static_cast<const uint8_t *>(indices);
+    // Keeps the read back index data alive while it's used.
+    webgpu::BufferReadback indexReadback;
     if (elementArrayBuffer)
     {
         BufferWgpu *elementArrayBufferWgpu = GetImplAs<BufferWgpu>(elementArrayBuffer);
@@ -231,13 +233,19 @@ angle::Result VertexArrayWgpu::syncClientArrays(
         size_t mapReadSize = rx::roundUpPow2(
             static_cast<size_t>(elementArrayBufferWgpu->getBuffer().actualSize()) - sourceOffset,
             webgpu::kBufferCopyToBufferAlignment);
-        if (!elementArrayBufferWgpu->getBuffer().isMappedForRead())
+        if (elementArrayBufferWgpu->getBuffer().isMappedForRead())
         {
-            ANGLE_TRY(elementArrayBufferWgpu->getBuffer().mapImmediate(
-                contextWgpu, WGPUMapMode_Read, sourceOffset, mapReadSize));
+            srcIndexData =
+                elementArrayBufferWgpu->getBuffer().getMapReadPointer(sourceOffset, mapReadSize);
         }
-        srcIndexData =
-            elementArrayBufferWgpu->getBuffer().getMapReadPointer(sourceOffset, mapReadSize);
+        else
+        {
+            // Index buffers can't be mapped, so read them back through a staging buffer.
+            ANGLE_TRY(elementArrayBufferWgpu->getBuffer().readDataImmediate(
+                contextWgpu, sourceOffset, mapReadSize,
+                webgpu::RenderPassClosureReason::IndexRangeReadback, &indexReadback));
+            srcIndexData = indexReadback.data;
+        }
     }
     uint32_t adjustedCount = calculateAdjustedIndexCount(
         mode, primitiveRestartEnabled, destDrawElementsTypeOrInvalid, count, srcIndexData);

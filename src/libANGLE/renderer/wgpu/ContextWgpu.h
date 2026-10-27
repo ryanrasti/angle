@@ -347,6 +347,10 @@ class ContextWgpu : public ContextImpl
     // that have no buffer bound.
     angle::Result getZeroUniformBuffer(size_t minSize, webgpu::BufferHelper **bufferOut);
 
+    // Identifies the commands recorded since the last submission.  Incremented on every
+    // submission, see BufferHelper::markUsedByPendingCommands().
+    uint64_t getPendingCommandsSerial() const { return mPendingCommandsSerial; }
+
     webgpu::UtilsWgpu *getUtils() { return &mUtils; }
     webgpu::CommandBuffer &getCommandBuffer() { return mCommandBuffer; }
 
@@ -448,6 +452,9 @@ class ContextWgpu : public ContextImpl
     webgpu::BindGroupHandle mDriverUniformsBindGroup;
 
     std::unique_ptr<webgpu::BufferHelper> mZeroUniformBuffer;
+
+    // Starts at 1 so that it never matches the initial serial of buffers.
+    uint64_t mPendingCommandsSerial = 1;
 
     webgpu::UtilsWgpu mUtils;
 };

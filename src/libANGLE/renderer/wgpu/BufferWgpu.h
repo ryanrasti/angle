@@ -10,6 +10,7 @@
 #ifndef LIBANGLE_RENDERER_WGPU_BUFFERWGPU_H_
 #define LIBANGLE_RENDERER_WGPU_BUFFERWGPU_H_
 
+#include "common/MemoryBuffer.h"
 #include "libANGLE/renderer/BufferImpl.h"
 
 #include "libANGLE/renderer/wgpu/wgpu_helpers.h"
@@ -68,7 +69,22 @@ class BufferWgpu : public BufferImpl
     webgpu::BufferHelper &getBuffer() { return mBuffer; }
 
   private:
+    // Writes `size` bytes of `data` at `offset`, ordered after the commands already recorded that
+    // use the buffer.
+    angle::Result writeData(ContextWgpu *contextWgpu,
+                            const uint8_t *data,
+                            size_t offset,
+                            size_t size);
+    // Reads `size` bytes at `offset` into `dataOut`, waiting for the commands that use the buffer.
+    angle::Result readData(ContextWgpu *contextWgpu, size_t offset, size_t size, uint8_t *dataOut);
+
     webgpu::BufferHelper mBuffer;
+
+    // While the buffer is mapped with glMapBufferRange, the application reads and writes this CPU
+    // copy of the mapped range, which is written back to the buffer when it is unmapped.
+    angle::MemoryBuffer mMapShadow;
+    size_t mMapOffset     = 0;
+    GLbitfield mMapAccess = 0;
 };
 
 }  // namespace rx

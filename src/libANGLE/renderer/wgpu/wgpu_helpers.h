@@ -282,6 +282,19 @@ class BufferHelper : public angle::NonCopyable
     uint64_t requestedSize() const;
     uint64_t actualSize() const;
 
+    // Records that commands recorded for the context's `pendingCommandsSerial` (i.e. not yet
+    // submitted) use this buffer.  Writes to the buffer from the queue (e.g. queueWriteBuffer)
+    // would happen before those commands execute, so they must instead be recorded in order with
+    // them while this is true.
+    void markUsedByPendingCommands(uint64_t pendingCommandsSerial)
+    {
+        mPendingCommandsSerial = pendingCommandsSerial;
+    }
+    bool isUsedByPendingCommands(uint64_t pendingCommandsSerial) const
+    {
+        return mPendingCommandsSerial == pendingCommandsSerial;
+    }
+
     // Helper to copy data to a staging buffer and map it. Staging data is cleaned up by the
     // BufferReadback RAII object.
     angle::Result readDataImmediate(ContextWgpu *context,
@@ -296,6 +309,8 @@ class BufferHelper : public angle::NonCopyable
     size_t mRequestedSize = 0;
 
     std::optional<BufferMapState> mMappedState;
+
+    uint64_t mPendingCommandsSerial = 0;
 };
 
 struct BufferReadback
