@@ -1,6 +1,6 @@
 # Notes for agents: ES 3 on ANGLE's WebGPU backend
 
-(This file is local, not ANGLE's: keep it out of commits.)
+(This file is for our fork, ryanrasti/angle, only: it lives on the `wgpu-es3-local` branch and never goes upstream.)
 
 ## Why this exists
 
@@ -128,18 +128,28 @@ feature; what's left, and how far this is from what mutter and GTK4 need.
 Each commit message has before/after numbers. `out/baseline.md` has the full
 baseline vs. current table; `out/needs.md` has the consumer survey and ranking.
 
-### Not committed (local only, never commit)
+### Branches (fork: github.com/ryanrasti/angle, remote `github`)
 
-The ES3 end2end suites only run for WebGPU through a hack. It adds `ES3_WEBGPU()`
-to `ANGLE_ALL_TEST_PLATFORMS_ES3` (angle_test_instantiate.h). It also removes the
-explicit `ES3_WEBGPU()` from the files that already list it, to avoid duplicate
-test names: BlitFramebufferANGLETest, ClearTest, DepthStencilTest, LineLoopTest,
-MipmapTest and UniformBufferTest. Saved as `out/baseline-hack.patch`; it is just
-`git diff` of the working tree. Re-apply it with `git apply` after checkout.
+- `wgpu-es3`: only the upstream-style commits above. New feature commits go
+  here.
+- `wgpu-es3-local`: `wgpu-es3` plus "LOCAL ONLY" commits at the tip, which hold
+  this file, `handoff/` (copies of the `out/` docs and scripts) and the
+  test-enable hack. Rebase it onto `wgpu-es3` after adding commits there. Never
+  upstream it.
 
-### Environment notes (out/ is gitignored: copy these files by hand)
+The test-enable hack instantiates the ES3 end2end suites for WebGPU:
+- It adds `ES3_WEBGPU()` to `ANGLE_ALL_TEST_PLATFORMS_ES3` in
+  angle_test_instantiate.h.
+- It removes the explicit `ES3_WEBGPU()` from the files that already list it, to
+  avoid duplicate test names: BlitFramebufferANGLETest, ClearTest,
+  DepthStencilTest, LineLoopTest, MipmapTest and UniformBufferTest.
 
-- `out/env.sh` was extended:
+When a commit on `wgpu-es3` enables another suite for WebGPU upstream-style,
+remove that explicit `ES3_WEBGPU()` again in the local commit.
+
+### Environment notes (out/ is gitignored; copies of its scripts and docs are in `handoff/`)
+
+- `out/env.sh` (a copy is in `handoff/`) was extended:
   - libxcb, pciutils and gcc-lib paths added
   - `NIX_CC_WRAPPER_TARGET_HOST_x86_64_unknown_linux_gnu=1`, without which the
     nix clang wrapper ignores `NIX_CFLAGS_COMPILE`/`NIX_LDFLAGS`
