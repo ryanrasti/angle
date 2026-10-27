@@ -1,0 +1,14 @@
+linkage dEQP-GLES3.functional.shaders.linkage.*
+fragout dEQP-GLES3.functional.fragment_out.*
+ubo dEQP-GLES3.functional.ubo.*
+buffer dEQP-GLES3.functional.buffer.*
+instanced dEQP-GLES3.functional.instanced.*
+sync dEQP-GLES3.functional.fence_sync.*
+vtxarr dEQP-GLES3.functional.vertex_arrays.*
+samplers dEQP-GLES3.functional.samplers.*
+fbo_blit dEQP-GLES3.functional.fbo.blit.*
+swizzle dEQP-GLES3.functional.texture.swizzle.*
+occlusion dEQP-GLES3.functional.occlusion_query.*
+xfb dEQP-GLES3.functional.transform_feedback.*
+draw dEQP-GLES3.functional.draw.*
+shaders dEQP-GLES3.functional.shaders.*

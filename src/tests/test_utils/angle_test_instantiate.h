@@ -138,7 +138,7 @@ struct CombinedPrintToStringParamName
 
 #define ANGLE_ALL_TEST_PLATFORMS_ES3                                                   \
     ES3_D3D11(), ES3_OPENGL(), ES3_OPENGLES(), ES3_VULKAN(), ES3_VULKAN_SWIFTSHADER(), \
-        ES3_METAL(),                                                                   \
+        ES3_METAL(), ES3_WEBGPU(),                                                     \
         ES3_VULKAN()                                                                   \
             .enable(Feature::EnableParallelCompileAndLink)                             \
             .enable(Feature::VaryingsRequireMatchingPrecisionInSpirv),                 \

@@ -933,7 +933,6 @@ ANGLE_INSTANTIATE_TEST_ES3_AND(
     DepthStencilTestES3,
     ES3_VULKAN().enable(Feature::ForceFallbackFormat),
     ES3_VULKAN().enable(Feature::DisallowMixedDepthStencilLoadOpNoneAndLoad),
-    ES3_VULKAN_SWIFTSHADER().enable(Feature::ForceFallbackFormat),
-    ES3_WEBGPU());
+    ES3_VULKAN_SWIFTSHADER().enable(Feature::ForceFallbackFormat));
 
 }  // anonymous namespace

@@ -2970,8 +2970,7 @@ ANGLE_INSTANTIATE_TEST(Mipmap3DBoxFilterTest,
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(MipmapTestES3);
 ANGLE_INSTANTIATE_TEST_ES3_AND(MipmapTestES3,
                                ES3_OPENGL().enable(Feature::RecreateMipmapLevelsBeforeGenerate),
-                               ES3_OPENGLES().enable(Feature::RecreateMipmapLevelsBeforeGenerate),
-                               ES3_WEBGPU());
+                               ES3_OPENGLES().enable(Feature::RecreateMipmapLevelsBeforeGenerate));
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(MipmapTestES31);
 ANGLE_INSTANTIATE_TEST_ES31_AND(
