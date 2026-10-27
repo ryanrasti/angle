@@ -198,8 +198,17 @@ bool MixedTypeMathExprTraverser::visitBinary(Visit visit, TIntermBinary *binNode
                 UNIMPLEMENTED();
             }
 
-            TIntermNode *nonScalarConstructor =
-                convertScalarToNonScalar(nonScalarNode->getType(), scalarNode);
+            // The operands of shifts can have different basic types (e.g. ivec2 << uint), so
+            // splat the scalar into a vector of its own basic type.
+            TType splatType(nonScalarNode->getType());
+            const TOperator op = binNode->getOp();
+            if (op == EOpBitShiftLeft || op == EOpBitShiftRight || op == EOpBitShiftLeftAssign ||
+                op == EOpBitShiftRightAssign)
+            {
+                splatType.setBasicType(scalarNode->getType().getBasicType());
+            }
+
+            TIntermNode *nonScalarConstructor = convertScalarToNonScalar(splatType, scalarNode);
             queueReplacementWithParent(binNode, scalarNode, nonScalarConstructor,
                                        OriginalNode::BECOMES_CHILD);
 

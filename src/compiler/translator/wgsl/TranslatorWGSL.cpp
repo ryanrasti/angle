@@ -1309,7 +1309,28 @@ bool OutputWGSLTraverser::visitBinary(Visit, TIntermBinary *binaryNode)
             {
                 groupedTraverse(leftNode);
                 mSink << " " << opInfo.opName << " ";
-                groupedTraverse(rightNode);
+
+                // WGSL requires the shift amount to be unsigned and to have the same number of
+                // components as the shifted value, whereas GLSL allows signed shift amounts
+                // (negative ones are undefined) and scalar shift amounts for vectors.
+                const bool isShift = op == TOperator::EOpBitShiftLeft ||
+                                     op == TOperator::EOpBitShiftRight ||
+                                     op == TOperator::EOpBitShiftLeftAssign ||
+                                     op == TOperator::EOpBitShiftRightAssign;
+                if (isShift && (rightType.getBasicType() == EbtInt ||
+                                rightType.getNominalSize() != leftType.getNominalSize()))
+                {
+                    TType unsignedType(EbtUInt, rightType.getPrecision(), EvqTemporary,
+                                       leftType.getNominalSize());
+                    WriteWgslType(mSink, unsignedType, {});
+                    mSink << "(";
+                    rightNode.traverse(this);
+                    mSink << ")";
+                }
+                else
+                {
+                    groupedTraverse(rightNode);
+                }
             }
             else if (opInfo.wgslWrapperFn)
             {
